@@ -19,8 +19,6 @@ const keyPath = path.join(sslDir, 'key.pem');
 const certPath = path.join(sslDir, 'cert.pem');
 
 if (!fs.existsSync(sslDir)) fs.mkdirSync(sslDir);
-
-// auto-generate a self-signed cert if missing (dev only)
 if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
   console.log('Generating self-signed TLS certificate (dev)…');
   const pems = selfsigned.generate(
