@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from './pages/Register';
 import Login from './pages/Login';
 import Payment from './pages/Payment';
@@ -18,7 +18,7 @@ return (
 
 
 <Routes>
-<Route path="/" element={<Register />} />
+ <Route path="/" element={<Navigate to="/register" replace />} />
 <Route path="/register" element={<Register />} />
 <Route path="/login" element={<Login />} />
 <Route path="/payment" element={<Payment />} />
