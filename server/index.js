@@ -105,3 +105,18 @@ const cert = fs.readFileSync(certPath);
 https.createServer({ key, cert }, app).listen(PORT, () => {
   console.log(`✅ HTTPS API running on https://localhost:${PORT}`);
 });
+
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "DENY");
+
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none';"
+  );
+
+  next();
+});
