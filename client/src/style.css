@@ -1,0 +1,32 @@
+body 
+{ 
+    font-family: Arial, Helvetica, sans-serif; 
+}
+
+input, select 
+{
+     display: block; 
+     width: 100%; padding: 8px; 
+     margin: 6px 0 12px 0; 
+     box-sizing: border-box; 
+}
+
+label 
+{ 
+    margin-top: 8px; 
+    font-weight: 600; 
+}
+
+.error 
+{ 
+    color: #b00020; 
+    font-size: 0.95rem; 
+    margin-top: -8px; 
+    margin-bottom: 8px; 
+}
+
+button 
+{ 
+    padding: 8px 12px; 
+    cursor: pointer; 
+}
