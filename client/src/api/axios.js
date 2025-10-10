@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE,
-  withCredentials: true,
+  baseURL: process.env.REACT_APP_API_URL,
+  withCredentials: true, // send/receive the httpOnly cookie
 });
 
 export default api;

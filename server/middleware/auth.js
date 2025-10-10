@@ -1,19 +1,27 @@
+// server/middleware/auth.js
 const jwt = require('jsonwebtoken');
 
-module.exports = function auth(req, res, next) {
-  try {
-    // Prefer secure HttpOnly cookie; allow Bearer for testing
-    const cookie = req.cookies?.token;
-    const header = req.headers.authorization?.startsWith('Bearer ')
-      ? req.headers.authorization.slice(7)
-      : null;
-    const token = cookie || header;
-    if (!token) return res.status(401).json({ error: 'Auth required' });
+function auth(req, res, next) {
+  const token =
+    req.cookies?.token ||
+    (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { id: payload.sub };
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET); // { sub, role }
     next();
   } catch {
-    return res.status(401).json({ error: 'Invalid/expired token' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
+}
+
+auth.requireRole = (roleName) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const have = String(req.user.role || '').toLowerCase();
+  if (have !== String(roleName).toLowerCase()) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
 };
+
+module.exports = auth;

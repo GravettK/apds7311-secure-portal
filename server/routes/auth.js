@@ -1,62 +1,58 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
-// Temp in-memory “DB” for demo
-const users = new Map(); // key: accountNumber
-let uidSeq = 1;
+const { validate } = require('../middleware/validate');
+const { registerSchema, loginSchema } = require('../validation/schemas');
+const usersRepo = require('../src/repositories/userRepo');
 
-// Validations (mirror with frontend)
-const reId = /^\d{13}$/;          // SA ID number
-const reAccount = /^\d{8,16}$/;   // 8–16 digits
-
-router.post('/register', async (req, res) => {
+router.post('/register', validate(registerSchema), async (req, res, next) => {
   try {
-    const { name, idNumber, accountNumber, password } = req.body || {};
-    if (!name || !reId.test(idNumber) || !reAccount.test(accountNumber) || !password) {
-      return res.status(400).json({ error: 'Invalid input' });
-    }
-    if (users.has(accountNumber)) return res.status(409).json({ error: 'Account exists' });
+    const { email, password, fullName, saId, accountNumber } = req.validated.body;
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = { id: uidSeq++, name, idNumber, accountNumber, passwordHash };
-    users.set(accountNumber, user);
+    const exists = await usersRepo.findByEmail(email);
+    if (exists) return res.status(409).json({ error: 'Email already registered' });
 
-    return res.status(201).json({ ok: true, userId: user.id });
-  } catch {
-    return res.status(500).json({ error: 'Server error' });
-  }
+    const password_hash = await bcrypt.hash(password, 10);
+    const user = await usersRepo.create({
+      email,
+      password_hash,
+      full_name: fullName,
+      sa_id: saId,
+      account_number: accountNumber
+    });
+
+    res.status(201).json({ ok: true, userId: user.user_id });
+  } catch (e) { next(e); }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
-    const { accountNumber, password } = req.body || {};
-    if (!reAccount.test(accountNumber) || !password) {
-      return res.status(400).json({ error: 'Invalid input' });
-    }
-    const user = users.get(accountNumber);
+    const { email, password } = req.validated.body;
+    const user = await usersRepo.findByEmail(email);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET, { expiresIn: '30m' });
-    // Secure cookie (works because server is HTTPS)
+    const token = jwt.sign(
+      { sub: user.user_id, role: user.role_name || 'customer' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // cross-site cookie so FE (3000) can call BE (8443)
     res.cookie('token', token, {
       httpOnly: true,
       secure: true,
-      sameSite: 'strict',
-      maxAge: 30 * 60 * 1000
+      sameSite: 'none',
+      maxAge: 60 * 60 * 1000
     });
-    return res.json({ ok: true });
-  } catch {
-    return res.status(500).json({ error: 'Server error' });
-  }
-});
 
-router.post('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.json({ ok: true });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

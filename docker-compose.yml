@@ -1,0 +1,18 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: apds_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: apds_app
+    ports:
+      - "3306:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+  adminer:
+    image: adminer
+    container_name: apds_adminer
+    ports:
+      - "8080:8080"
+volumes:
+  dbdata:

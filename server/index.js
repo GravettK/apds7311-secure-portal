@@ -1,9 +1,7 @@
-// Core
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// App & security
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -12,111 +10,111 @@ const cookieParser = require('cookie-parser');
 const selfsigned = require('selfsigned');
 require('dotenv').config();
 
-
-// App setup
-
 const app = express();
-const PORT = Number(process.env.PORT || 3001);
-const ORIGIN = process.env.ALLOWED_ORIGIN || 'https://localhost:3000';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const PORT = Number(process.env.PORT || 8443);
 
+const rawOrigins = process.env.ALLOWED_ORIGIN || 'https://localhost:3000';
+const ALLOWED_ORIGINS = rawOrigins.split(',').map(s => s.trim());
 
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'"],
+      "object-src": ["'none'"],
+      "frame-ancestors": ["'none'"],
+      "img-src": ["'self'", "data:"],
+      "font-src": ["'self'"],
+      "connect-src": ["'self'"]
+    }
+  },
+  referrerPolicy: { policy: 'no-referrer' },
+  hsts: NODE_ENV === 'production'
+    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+    : false
+}));
 
-// Security middleware
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(new Error('CORS: Origin not allowed'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      useDefaults: true,
-      directives: {
-        "default-src": ["'self'"],
-        "script-src": ["'self'"],
-        "frame-ancestors": ["'none'"], 
-        "img-src": ["'self'"],
-        "font-src": ["'self'"]
-      }
-    },
-    crossOriginEmbedderPolicy: false 
-  })
-);
+app.options('*', cors());
 
-app.use(
-  cors({
-    origin: ORIGIN,
-    credentials: true
-  })
-);
-
-app.use(
-  rateLimit({
-    windowMs: 60 * 1000, 
-    max: 60,            
-    standardHeaders: true,
-    legacyHeaders: false
-  })
-);
-
-app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
+app.use(cookieParser());
 
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use(globalLimiter);
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/payments', require('./middleware/auth'), require('./routes/payments'));
-
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, https: true });
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many auth attempts. Please try again later.' }
 });
 
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, https: true, env: NODE_ENV });
+});
 
+app.use('/api/auth', authLimiter, require('./routes/auth'));
+app.use('/api/payments', require('./middleware/auth'), require('./routes/payments'));
+app.use('/api/staff', require('./routes/staff'));
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler 
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: 'Server error' });
 });
-
-
-// HTTPS bootstrap 
 
 const sslDir = path.join(__dirname, 'ssl');
 const keyPath = path.join(sslDir, 'key.pem');
 const certPath = path.join(sslDir, 'cert.pem');
 
 if (!fs.existsSync(sslDir)) fs.mkdirSync(sslDir, { recursive: true });
-if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-  console.log('Generating self-signed TLS certificate (dev)…');
-  const pems = selfsigned.generate(
-    [{ name: 'commonName', value: 'localhost' }],
-    { days: 3, keySize: 2048 }
-  );
-  fs.writeFileSync(keyPath, pems.private);
-  fs.writeFileSync(certPath, pems.cert);
+
+let key, cert;
+
+if (NODE_ENV !== 'production') {
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+    const pems = selfsigned.generate(
+      [{ name: 'commonName', value: 'localhost' }],
+      { days: 7, keySize: 2048 }
+    );
+    fs.writeFileSync(keyPath, pems.private);
+    fs.writeFileSync(certPath, pems.cert);
+  }
+  key = fs.readFileSync(keyPath);
+  cert = fs.readFileSync(certPath);
+} else {
+  key = fs.readFileSync(process.env.TLS_KEY_PATH);
+  cert = fs.readFileSync(process.env.TLS_CERT_PATH);
 }
 
-const key = fs.readFileSync(keyPath);
-const cert = fs.readFileSync(certPath);
+const server = https.createServer({ key, cert }, app);
 
-https.createServer({ key, cert }, app).listen(PORT, () => {
-  console.log(`✅ HTTPS API running on https://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`HTTPS API running on https://localhost:${PORT} (env: ${NODE_ENV})`);
 });
 
-app.use((req, res, next) => {
-  res.setHeader("X-Frame-Options", "DENY");
-
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-
-  res.setHeader("X-Content-Type-Options", "nosniff");
-
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none';"
-  );
-
-  next();
-});
+process.on('SIGINT', () => { server.close(() => process.exit(0)); });
+process.on('SIGTERM', () => { server.close(() => process.exit(0)); });

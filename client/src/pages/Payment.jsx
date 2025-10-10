@@ -1,169 +1,134 @@
 import React, { useState } from 'react';
-import api from '../api/axios'; // <-- or: import axios as api from 'axios'
+import api from '../api/axios';
 
-const patterns = {
-  accountNumber: /^\d{8,16}$/,
-  swift: /^[A-Za-z0-9]{8}([A-Za-z0-9]{3})?$/,
+const rx = {
+  account: /^\d{8,16}$/,
+  swift: /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/, // 8 or 11 (BIC)
   currency: /^(ZAR|USD|EUR|GBP)$/,
 };
 
 export default function Payment() {
   const [form, setForm] = useState({
-    accountNumber: '',
+    accountTo: '',
     swift: '',
     amount: '',
     currency: 'ZAR',
+    purpose: '',
   });
   const [errors, setErrors] = useState({});
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  function handleChange(e) {
+  const onChange = (e) => {
     const { name, value } = e.target;
+    const next =
+      name === 'amount' ? value.replace(/[^\d.]/g, '') : name === 'swift' ? value.toUpperCase() : value;
+    setForm((p) => ({ ...p, [name]: next }));
+    setErrors((p) => ({ ...p, [name]: '' }));
+  };
 
-    // small nicety: keep amount numeric-ish while typing
-    const next = name === 'amount'
-      ? value.replace(/[^\d.]/g, '')
-      : value;
-
-    setForm(prev => ({ ...prev, [name]: next }));
-    setErrors(prev => ({ ...prev, [name]: '' }));
-  }
-
-  function validate() {
-    const errs = {};
-    if (!patterns.accountNumber.test(form.accountNumber)) {
-      errs.accountNumber = 'Account number must be 8–16 digits.';
-    }
-    if (!patterns.swift.test(form.swift)) {
-      errs.swift = 'SWIFT must be 8 or 11 alphanumeric characters.';
-    }
+  const validate = () => {
+    const e = {};
+    if (!rx.account.test(form.accountTo)) e.accountTo = 'Account number must be 8–16 digits.';
+    if (!rx.swift.test(form.swift)) e.swift = 'SWIFT must be 8 or 11 chars (ISO 9362).';
     const amt = Number(form.amount);
-    if (!form.amount || Number.isNaN(amt) || amt <= 0) {
-      errs.amount = 'Enter a positive amount.';
-    }
-    if (!patterns.currency.test(form.currency)) {
-      errs.currency = 'Currency must be ZAR, USD, EUR or GBP.';
-    }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  }
+    if (!form.amount || Number.isNaN(amt) || amt <= 0) e.amount = 'Enter a positive amount.';
+    if (!rx.currency.test(form.currency)) e.currency = 'Pick a valid currency.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
-  async function handleSubmit(e) {
+  const onSubmit = async (e) => {
     e.preventDefault();
-    setMessage('');
+    setMsg('');
     if (!validate()) return;
 
-    setSubmitting(true);
-    try {
-      // Adjust the path if your route differs, e.g. '/api/payments'
-      const { data } = await api.post('/api/payment', {
-        accountNumber: form.accountNumber.trim(),
-        swift: form.swift.trim().toUpperCase(),
-        amount: Number(form.amount),
-        currency: form.currency,
-      });
+    const amountCents = Math.round(Number(form.amount) * 100);
 
-      setMessage(`✅ Payment successful${data?.message ? `: ${data.message}` : ''}`);
-      // optional: reset fields
-      // setForm({ accountNumber: '', swift: '', amount: '', currency: 'ZAR' });
+    setBusy(true);
+    try {
+      const { data } = await api.post('/payments', {
+        accountTo: form.accountTo.trim(),
+        swift: form.swift.trim(),
+        currency: form.currency,
+        amountCents,
+        purpose: form.purpose.trim(),
+      });
+      setMsg(`Payment created. ID: ${data.paymentId}`);
+      // setForm({ accountTo: '', swift: '', amount: '', currency: 'ZAR', purpose: '' });
     } catch (err) {
-      const apiMsg = err?.response?.data?.error || err?.response?.data?.message;
-      setMessage(`❌ Payment failed: ${apiMsg || err.message}`);
+      const apiErr = err?.response?.data?.error || err?.response?.data?.message;
+      setMsg(`${apiErr || 'Payment failed'}`);
     } finally {
-      setSubmitting(false);
+      setBusy(false);
     }
-  }
+  };
 
   return (
-    <div style={{ maxWidth: 520 }}>
-      <h3>Payment</h3>
-
-      <form onSubmit={handleSubmit} noValidate>
-        <label htmlFor="accountNumber">Account number</label>
+    <div style={{ maxWidth: 520, margin: '2rem auto' }}>
+      <h3>New Payment</h3>
+      <form onSubmit={onSubmit} noValidate>
+        <label htmlFor="accountTo">Destination account</label>
         <input
-          id="accountNumber"
-          name="accountNumber"
-          value={form.accountNumber}
-          onChange={handleChange}
+          id="accountTo"
+          name="accountTo"
+          value={form.accountTo}
+          onChange={onChange}
           inputMode="numeric"
-          pattern="\d{8,16}"
           autoComplete="off"
-          aria-invalid={!!errors.accountNumber}
-          aria-describedby={errors.accountNumber ? 'err-accountNumber' : undefined}
+          aria-invalid={!!errors.accountTo}
         />
-        {errors.accountNumber && (
-          <div id="err-accountNumber" className="error" role="alert">
-            {errors.accountNumber}
-          </div>
-        )}
+        {errors.accountTo && <div className="error">{errors.accountTo}</div>}
 
-        <label htmlFor="swift" style={{ marginTop: 10 }}>SWIFT code</label>
+        <label htmlFor="swift" style={{ marginTop: 10 }}>SWIFT / BIC</label>
         <input
           id="swift"
           name="swift"
           value={form.swift}
-          onChange={handleChange}
+          onChange={onChange}
           autoComplete="off"
           aria-invalid={!!errors.swift}
-          aria-describedby={errors.swift ? 'err-swift' : undefined}
         />
-        {errors.swift && (
-          <div id="err-swift" className="error" role="alert">
-            {errors.swift}
-          </div>
-        )}
+        {errors.swift && <div className="error">{errors.swift}</div>}
 
         <label htmlFor="amount" style={{ marginTop: 10 }}>Amount</label>
         <input
           id="amount"
           name="amount"
           value={form.amount}
-          onChange={handleChange}
+          onChange={onChange}
           inputMode="decimal"
           placeholder="e.g. 100.00"
           autoComplete="off"
           aria-invalid={!!errors.amount}
-          aria-describedby={errors.amount ? 'err-amount' : undefined}
         />
-        {errors.amount && (
-          <div id="err-amount" className="error" role="alert">
-            {errors.amount}
-          </div>
-        )}
+        {errors.amount && <div className="error">{errors.amount}</div>}
 
         <label htmlFor="currency" style={{ marginTop: 10 }}>Currency</label>
-        <select
-          id="currency"
-          name="currency"
-          value={form.currency}
-          onChange={handleChange}
-          aria-invalid={!!errors.currency}
-          aria-describedby={errors.currency ? 'err-currency' : undefined}
-        >
+        <select id="currency" name="currency" value={form.currency} onChange={onChange} aria-invalid={!!errors.currency}>
           <option value="ZAR">ZAR</option>
           <option value="USD">USD</option>
           <option value="EUR">EUR</option>
           <option value="GBP">GBP</option>
         </select>
-        {errors.currency && (
-          <div id="err-currency" className="error" role="alert">
-            {errors.currency}
-          </div>
-        )}
+        {errors.currency && <div className="error">{errors.currency}</div>}
+
+        <label htmlFor="purpose" style={{ marginTop: 10 }}>Purpose (optional)</label>
+        <input
+          id="purpose"
+          name="purpose"
+          value={form.purpose}
+          onChange={onChange}
+          maxLength={255}
+          autoComplete="off"
+        />
 
         <div style={{ marginTop: 14 }}>
-          <button type="submit" disabled={submitting}>
-            {submitting ? 'Processing…' : 'Pay'}
-          </button>
+          <button type="submit" disabled={busy}>{busy ? 'Processing…' : 'Pay'}</button>
         </div>
       </form>
 
-      {message && (
-        <div style={{ marginTop: 12 }} aria-live="polite">
-          {message}
-        </div>
-      )}
+      {msg && <div style={{ marginTop: 12 }} aria-live="polite">{msg}</div>}
     </div>
   );
 }

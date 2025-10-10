@@ -48,14 +48,7 @@ return Object.keys(errs).length === 0;
 }
 
 async function handleSubmit(e) {
-// setMessage('Registration successful!');
-// } catch (err) {
-// setMessage('Registration failed: ' + (err.response?.data?.message || err.message));
-// }
-// ========================================================
 
-
-// For now (demo), just show success:
 setMessage('Validation passed — ready to send to backend. (See console)');
 console.log('Would send to backend:', form);
 }
