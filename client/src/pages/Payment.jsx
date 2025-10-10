@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import api from '../api/axios'; // <-- or: import axios as api from 'axios'
+import api from '../api/axiosConfig';
 
 const patterns = {
   accountNumber: /^\d{8,16}$/,
@@ -8,43 +8,23 @@ const patterns = {
 };
 
 export default function Payment() {
-  const [form, setForm] = useState({
-    accountNumber: '',
-    swift: '',
-    amount: '',
-    currency: 'ZAR',
-  });
+  const [form, setForm] = useState({ accountNumber: '', swift: '', amount: '', currency: 'ZAR' });
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   function handleChange(e) {
-    const { name, value } = e.target;
-
-    // small nicety: keep amount numeric-ish while typing
-    const next = name === 'amount'
-      ? value.replace(/[^\d.]/g, '')
-      : value;
-
-    setForm(prev => ({ ...prev, [name]: next }));
-    setErrors(prev => ({ ...prev, [name]: '' }));
+    setForm({ ...form, [e.target.name]: e.target.value });
+    setErrors(prev => ({ ...prev, [e.target.name]: '' }));
   }
 
   function validate() {
     const errs = {};
-    if (!patterns.accountNumber.test(form.accountNumber)) {
-      errs.accountNumber = 'Account number must be 8–16 digits.';
-    }
-    if (!patterns.swift.test(form.swift)) {
-      errs.swift = 'SWIFT must be 8 or 11 alphanumeric characters.';
-    }
+    if (!patterns.accountNumber.test(form.accountNumber)) errs.accountNumber = 'Account number must be 8–16 digits.';
+    if (!patterns.swift.test(form.swift)) errs.swift = 'SWIFT must be 8 or 11 alphanumeric characters.';
     const amt = Number(form.amount);
-    if (!form.amount || Number.isNaN(amt) || amt <= 0) {
-      errs.amount = 'Enter a positive amount.';
-    }
-    if (!patterns.currency.test(form.currency)) {
-      errs.currency = 'Currency must be ZAR, USD, EUR or GBP.';
-    }
+    if (!form.amount || Number.isNaN(amt) || amt <= 0) errs.amount = 'Enter a positive amount.';
+    if (!patterns.currency.test(form.currency)) errs.currency = 'Currency must be ZAR, USD, EUR or GBP.';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -53,117 +33,57 @@ export default function Payment() {
     e.preventDefault();
     setMessage('');
     if (!validate()) return;
-
-    setSubmitting(true);
+    setLoading(true);
     try {
-      // Adjust the path if your route differs, e.g. '/api/payments'
-      const { data } = await api.post('/api/payment', {
-        accountNumber: form.accountNumber.trim(),
-        swift: form.swift.trim().toUpperCase(),
-        amount: Number(form.amount),
-        currency: form.currency,
-      });
-
-      setMessage(`✅ Payment successful${data?.message ? `: ${data.message}` : ''}`);
-      // optional: reset fields
-      // setForm({ accountNumber: '', swift: '', amount: '', currency: 'ZAR' });
+      const res = await api.post('/payment', form);
+      setMessage(res?.data?.message || 'Payment successful.');
+      console.log('Payment response', res.data);
     } catch (err) {
-      const apiMsg = err?.response?.data?.error || err?.response?.data?.message;
-      setMessage(`❌ Payment failed: ${apiMsg || err.message}`);
+      setMessage('Payment failed: ' + (err?.message || JSON.stringify(err)));
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 520 }}>
+    <div style={{ maxWidth: 500 }}>
       <h3>Payment</h3>
-
       <form onSubmit={handleSubmit} noValidate>
-        <label htmlFor="accountNumber">Account number</label>
-        <input
-          id="accountNumber"
-          name="accountNumber"
-          value={form.accountNumber}
-          onChange={handleChange}
-          inputMode="numeric"
-          pattern="\d{8,16}"
-          autoComplete="off"
-          aria-invalid={!!errors.accountNumber}
-          aria-describedby={errors.accountNumber ? 'err-accountNumber' : undefined}
-        />
-        {errors.accountNumber && (
-          <div id="err-accountNumber" className="error" role="alert">
-            {errors.accountNumber}
-          </div>
-        )}
+        <div className="form-row">
+          <label>Account number</label>
+          <input name="accountNumber" value={form.accountNumber} onChange={handleChange} />
+          {errors.accountNumber && <div className="error">{errors.accountNumber}</div>}
+        </div>
 
-        <label htmlFor="swift" style={{ marginTop: 10 }}>SWIFT code</label>
-        <input
-          id="swift"
-          name="swift"
-          value={form.swift}
-          onChange={handleChange}
-          autoComplete="off"
-          aria-invalid={!!errors.swift}
-          aria-describedby={errors.swift ? 'err-swift' : undefined}
-        />
-        {errors.swift && (
-          <div id="err-swift" className="error" role="alert">
-            {errors.swift}
-          </div>
-        )}
+        <div className="form-row">
+          <label>SWIFT code</label>
+          <input name="swift" value={form.swift} onChange={handleChange} />
+          {errors.swift && <div className="error">{errors.swift}</div>}
+        </div>
 
-        <label htmlFor="amount" style={{ marginTop: 10 }}>Amount</label>
-        <input
-          id="amount"
-          name="amount"
-          value={form.amount}
-          onChange={handleChange}
-          inputMode="decimal"
-          placeholder="e.g. 100.00"
-          autoComplete="off"
-          aria-invalid={!!errors.amount}
-          aria-describedby={errors.amount ? 'err-amount' : undefined}
-        />
-        {errors.amount && (
-          <div id="err-amount" className="error" role="alert">
-            {errors.amount}
-          </div>
-        )}
+        <div className="form-row">
+          <label>Amount</label>
+          <input name="amount" value={form.amount} onChange={handleChange} placeholder="e.g. 100.00" />
+          {errors.amount && <div className="error">{errors.amount}</div>}
+        </div>
 
-        <label htmlFor="currency" style={{ marginTop: 10 }}>Currency</label>
-        <select
-          id="currency"
-          name="currency"
-          value={form.currency}
-          onChange={handleChange}
-          aria-invalid={!!errors.currency}
-          aria-describedby={errors.currency ? 'err-currency' : undefined}
-        >
-          <option value="ZAR">ZAR</option>
-          <option value="USD">USD</option>
-          <option value="EUR">EUR</option>
-          <option value="GBP">GBP</option>
-        </select>
-        {errors.currency && (
-          <div id="err-currency" className="error" role="alert">
-            {errors.currency}
-          </div>
-        )}
+        <div className="form-row">
+          <label>Currency</label>
+          <select name="currency" value={form.currency} onChange={handleChange}>
+            <option value="ZAR">ZAR</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="GBP">GBP</option>
+          </select>
+          {errors.currency && <div className="error">{errors.currency}</div>}
+        </div>
 
-        <div style={{ marginTop: 14 }}>
-          <button type="submit" disabled={submitting}>
-            {submitting ? 'Processing…' : 'Pay'}
-          </button>
+        <div style={{ marginTop: 12 }}>
+          <button type="submit" disabled={loading}>{loading ? 'Processing...' : 'Pay'}</button>
         </div>
       </form>
 
-      {message && (
-        <div style={{ marginTop: 12 }} aria-live="polite">
-          {message}
-        </div>
-      )}
+      {message && <div style={{ marginTop: 12 }}>{message}</div>}
     </div>
   );
 }
