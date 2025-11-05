@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import api from '../api/axiosConfig';
+import api from '../api/axios';
 import { useNavigate } from 'react-router-dom';
 
 const emailPattern = /^\S+@\S+\.\S+$/;
