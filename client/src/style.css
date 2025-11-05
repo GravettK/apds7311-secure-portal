@@ -30,3 +30,22 @@ button
     padding: 8px 12px; 
     cursor: pointer; 
 }
+
+.form-row {
+  margin-bottom: 14px;      /* space between rows */
+}
+
+.form-row label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+input, select {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.error { color: #b00020; font-size: 0.95rem; margin-top: 6px; }
