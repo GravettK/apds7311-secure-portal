@@ -1,0 +1,42 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: apds_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: apds_app
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+  adminer:
+    image: adminer
+    container_name: apds_adminer
+    ports:
+      - "8080:8080"
+  sonarqube:
+    image: sonarqube:9-community
+    container_name: apds_sonarqube
+    ports:
+      - "9001:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sq_data:/opt/sonarqube/data
+      - sq_extensions:/opt/sonarqube/extensions
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli:latest
+    container_name: apds_sonar_scanner
+    depends_on:
+      - sonarqube
+    environment:
+      - SONAR_HOST_URL=http://sonarqube:9000
+      - SONAR_LOGIN=${SONAR_TOKEN}
+    volumes:
+      - ./:/usr/src
+    working_dir: /usr/src
+    command: ["sonar-scanner"]
+volumes:
+  dbdata:
+  sq_data:
+  sq_extensions:
