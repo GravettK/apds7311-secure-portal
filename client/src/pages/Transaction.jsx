@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
+import { Helmet } from 'react-helmet';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import DOMPurify from 'dompurify';
-import { Helmet } from 'react-helmet';
 
-const patterns = {
-  accountNumber: /^\d{8,16}$/,
-  swift: /^[A-Za-z0-9]{8}([A-Za-z0-9]{3})?$/,
+const rx = {
+  account: /^\d{8,16}$/,
+  bic: /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/,    // ISO 9362 (8 or 11)
   currency: /^(ZAR|USD|EUR|GBP)$/,
-  amount: /^\d+(\.\d{1,2})?$/,
+  amount: /^\d+(\.\d{1,2})?$/,                           // max 2 decimals
 };
 
 export default function Transaction() {
@@ -23,44 +24,60 @@ export default function Transaction() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const navigate = useNavigate();
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-    setErrors(prev => ({ ...prev, [name]: '' }));
+    let next = value;
+
+    if (name === 'swift') next = value.toUpperCase();
+    if (name === 'amount') next = value.replace(/[^\d.]/g, '');
+
+    setForm((prev) => ({ ...prev, [name]: next }));
+    setErrors((prev) => ({ ...prev, [name]: '' }));
     setMessage('');
   }
 
   function validate() {
-    const errs = {};
-    if (!patterns.accountNumber.test(form.accountNumber)) errs.accountNumber = 'Account number must be 8–16 digits.';
-    if (!patterns.swift.test(form.swift)) errs.swift = 'SWIFT must be 8 or 11 alphanumeric characters.';
-    if (!patterns.amount.test(form.amount) || Number(form.amount) <= 0) errs.amount = 'Enter a positive amount (max 2 decimals).';
-    if (!patterns.currency.test(form.currency)) errs.currency = 'Currency must be ZAR, USD, EUR or GBP.';
-   
-    const cleanDesc = DOMPurify.sanitize(form.description || '');
-    if (cleanDesc.length > 200) errs.description = 'Description must be 200 characters or fewer.';
-    setErrors(errs);
-    return { ok: Object.keys(errs).length === 0, cleanDesc };
+    const e = {};
+    if (!rx.account.test(form.accountNumber)) e.accountNumber = 'Account number must be 8–16 digits.';
+    if (!rx.bic.test(form.swift)) e.swift = 'SWIFT/BIC must be 8 or 11 characters.';
+    if (!rx.amount.test(form.amount) || Number(form.amount) <= 0) e.amount = 'Enter a positive amount (up to 2 decimals).';
+    if (!rx.currency.test(form.currency)) e.currency = 'Currency must be ZAR, USD, EUR or GBP.';
+
+    const cleanDesc = DOMPurify.sanitize(form.description || '').slice(0, 200);
+    if ((form.description || '').length > 200) e.description = 'Description must be 200 characters or fewer.';
+
+    setErrors(e);
+    return { ok: Object.keys(e).length === 0, cleanDesc };
   }
 
   async function handleVerify(e) {
     e?.preventDefault();
+    if (verifying || loading) return;
     setMessage('');
+
     const { ok } = validate();
     if (!ok) return;
+
     setVerifying(true);
     try {
       const payload = {
-        accountNumber: form.accountNumber,
-        swift: form.swift,
+        accountNumber: form.accountNumber.trim(),
+        swift: form.swift.trim(),
         currency: form.currency,
       };
-     
       const res = await api.post('/transactions/verify', payload);
-      setMessage(res?.data?.message || 'Verification OK');
+      setMessage(res?.data?.message || 'Verification OK.');
     } catch (err) {
-      setMessage('Verification failed: ' + (err?.message || JSON.stringify(err)));
+      const status = err?.response?.status;
+      const apiMsg = err?.response?.data?.error || err?.response?.data?.message;
+      if (status === 401) {
+        setMessage('Session expired. Redirecting to login…');
+        setTimeout(() => navigate('/login'), 800);
+      } else {
+        setMessage(`Verification failed: ${apiMsg || err.message}`);
+      }
     } finally {
       setVerifying(false);
     }
@@ -68,32 +85,43 @@ export default function Transaction() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loading || verifying) return;
     setMessage('');
+
     const { ok, cleanDesc } = validate();
     if (!ok) return;
-    setLoading(true);
 
-   
+    const amountCents = Math.round(Number(form.amount) * 100);
     const safePayload = {
-      accountNumber: form.accountNumber,
-      swift: form.swift,
-      amount: Number(form.amount),
+      accountNumber: form.accountNumber.trim(),
+      swift: form.swift.trim(),
       currency: form.currency,
-      description: DOMPurify.sanitize(cleanDesc),
+      amountCents,
+      description: cleanDesc,
+      // include amount for backward-compat if backend expects number:
+      amount: Number(form.amount),
     };
 
+    setLoading(true);
     try {
-      
       const res = await api.post('/transactions/submit-swift', safePayload);
       setMessage(res?.data?.message || 'Transaction submitted successfully.');
-      // Optionally clear form:
       setForm({ accountNumber: '', swift: '', amount: '', currency: 'ZAR', description: '' });
     } catch (err) {
-      setMessage('Submission failed: ' + (err?.message || JSON.stringify(err)));
+      const status = err?.response?.status;
+      const apiMsg = err?.response?.data?.error || err?.response?.data?.message;
+      if (status === 401) {
+        setMessage('Session expired. Redirecting to login…');
+        setTimeout(() => navigate('/login'), 800);
+      } else {
+        setMessage(`Submission failed: ${apiMsg || err.message}`);
+      }
     } finally {
       setLoading(false);
     }
   }
+
+  const isError = message.toLowerCase().includes('fail') || message.toLowerCase().includes('error');
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -115,8 +143,11 @@ export default function Transaction() {
               value={form.accountNumber}
               onChange={handleChange}
               placeholder="8-16 digits"
+              inputMode="numeric"
+              aria-invalid={!!errors.accountNumber}
+              aria-describedby={errors.accountNumber ? 'err-account' : undefined}
             />
-            {errors.accountNumber && <div className="text-red-500 text-sm mt-1">{errors.accountNumber}</div>}
+            {errors.accountNumber && <div id="err-account" className="text-red-500 text-sm mt-1">{errors.accountNumber}</div>}
           </div>
 
           <div className="form-group">
@@ -128,8 +159,10 @@ export default function Transaction() {
               value={form.swift}
               onChange={handleChange}
               placeholder="8 or 11 chars"
+              aria-invalid={!!errors.swift}
+              aria-describedby={errors.swift ? 'err-swift' : undefined}
             />
-            {errors.swift && <div className="text-red-500 text-sm mt-1">{errors.swift}</div>}
+            {errors.swift && <div id="err-swift" className="text-red-500 text-sm mt-1">{errors.swift}</div>}
           </div>
 
           <div className="form-group">
@@ -141,8 +174,11 @@ export default function Transaction() {
               value={form.amount}
               onChange={handleChange}
               placeholder="e.g. 100.00"
+              inputMode="decimal"
+              aria-invalid={!!errors.amount}
+              aria-describedby={errors.amount ? 'err-amount' : undefined}
             />
-            {errors.amount && <div className="text-red-500 text-sm mt-1">{errors.amount}</div>}
+            {errors.amount && <div id="err-amount" className="text-red-500 text-sm mt-1">{errors.amount}</div>}
           </div>
 
           <div className="form-group">
@@ -152,13 +188,15 @@ export default function Transaction() {
               className="w-full p-3 border rounded-lg bg-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.currency}
               onChange={handleChange}
+              aria-invalid={!!errors.currency}
+              aria-describedby={errors.currency ? 'err-currency' : undefined}
             >
               <option value="ZAR">ZAR</option>
               <option value="USD">USD</option>
               <option value="EUR">EUR</option>
               <option value="GBP">GBP</option>
             </select>
-            {errors.currency && <div className="text-red-500 text-sm mt-1">{errors.currency}</div>}
+            {errors.currency && <div id="err-currency" className="text-red-500 text-sm mt-1">{errors.currency}</div>}
           </div>
 
           <div className="form-group">
@@ -170,8 +208,10 @@ export default function Transaction() {
               value={form.description}
               onChange={handleChange}
               placeholder="Optional (max 200 chars)"
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? 'err-desc' : undefined}
             />
-            {errors.description && <div className="text-red-500 text-sm mt-1">{errors.description}</div>}
+            {errors.description && <div id="err-desc" className="text-red-500 text-sm mt-1">{errors.description}</div>}
           </div>
 
           <div className="flex gap-4 justify-end mt-8">
@@ -181,7 +221,7 @@ export default function Transaction() {
               disabled={verifying || loading}
               className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition disabled:opacity-50"
             >
-              {verifying ? 'Verifying...' : 'Verify Details'}
+              {verifying ? 'Verifying…' : 'Verify Details'}
             </button>
 
             <button
@@ -189,19 +229,22 @@ export default function Transaction() {
               disabled={loading || verifying}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50"
             >
-              {loading ? 'Processing...' : 'Submit Transaction'}
+              {loading ? 'Processing…' : 'Submit Transaction'}
             </button>
           </div>
         </form>
 
         {message && (
-          <div className={`mt-6 p-4 rounded-lg ${
-            message.toLowerCase().includes('fail') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-          }`}>
+          <div
+            className={`mt-6 p-4 rounded-lg ${
+              isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+            }`}
+            role="status"
+          >
             {message}
           </div>
         )}
       </div>
     </div>
-  );
+  );
 }

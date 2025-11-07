@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const { setCsrfCookie } = require('../middleware/csrf');
+const auth = require('../middleware/auth');
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const { validate } = require('../middleware/validate');
@@ -49,7 +50,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: 60 * 60 * 1000
     });
 
@@ -61,9 +62,15 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.clearCookie('token', { httpOnly: true, secure: true, sameSite: 'strict' });
-  res.clearCookie('csrfToken', { httpOnly: false, secure: true, sameSite: 'strict' });
+  const secureFlag = NODE_ENV === 'production';
+  const sameSiteVal = NODE_ENV === 'production' ? 'strict' : 'lax';
+  res.clearCookie('token', { httpOnly: true, secure: secureFlag, sameSite: sameSiteVal });
+  res.clearCookie('csrfToken', { httpOnly: false, secure: secureFlag, sameSite: sameSiteVal });
   res.json({ ok: true });
 });
 
 module.exports = router;
+// session info for client auth guards
+router.get('/me', auth, (req, res) => {
+  return res.json({ ok: true, userId: req.user?.sub, role: req.user?.role || 'customer' });
+});

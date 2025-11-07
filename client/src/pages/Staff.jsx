@@ -19,7 +19,7 @@ export default function Staff() {
       const code = e?.response?.status;
       if (code === 401 || code === 403) {
         setMsg('Please login with an employee account.');
-        navigate('/login');
+        navigate('/login', { state: { from: '/staff' } });
       } else {
         setMsg(e?.response?.data?.error || 'Failed to load payments');
       }
@@ -85,12 +85,14 @@ export default function Staff() {
               <TableCell>{r.currency}</TableCell>
               <TableCell>{r.status}</TableCell>
               <TableCell>
-                {status === 'PENDING' && (
-                  <Button size="small" onClick={() => onVerify(r.payment_id)}>Verify</Button>
-                )}
-                {status === 'VERIFIED' && (
-                  <Button size="small" variant="contained" onClick={() => onSubmitSwift(r.payment_id)}>Submit to SWIFT</Button>
-                )}
+                <Stack direction="row" spacing={1}>
+                  {status === 'PENDING' && (
+                    <Button size="small" variant="contained" onClick={() => navigate(`/transaction/${r.payment_id}`)}>View</Button>
+                  )}
+                  {status === 'VERIFIED' && (
+                    <Button size="small" variant="contained" onClick={() => onSubmitSwift(r.payment_id)}>Submit to SWIFT</Button>
+                  )}
+                </Stack>
               </TableCell>
             </TableRow>
           ))}
@@ -100,8 +102,8 @@ export default function Staff() {
         </TableBody>
       </Table>
 
-      <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg('')}>
-        <Alert severity={msg.toLowerCase().includes('fail') ? 'error' : 'info'}>{msg}</Alert>
+      <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <Alert severity={msg.toLowerCase().includes('fail') ? 'error' : (msg.toLowerCase().includes('verified') || msg.toLowerCase().includes('submitted')) ? 'success' : 'info'}>{msg}</Alert>
       </Snackbar>
     </Paper>
   );

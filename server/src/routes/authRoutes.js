@@ -9,7 +9,6 @@ require('dotenv').config();
 const { validate } = require('../middleware/validate');
 const { registerSchema, loginSchema } = require('../validation/schemas');
 
-// ✅ correct path to the repo (based on the structure we set up)
 const usersRepo = require('../src/repositories/userRepo');
 
 // POST /api/auth/register
@@ -22,7 +21,7 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    // ✅ match the repo's expected field names
+
     const user = await usersRepo.create({
       email,
       password_hash,

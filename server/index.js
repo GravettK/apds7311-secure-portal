@@ -9,7 +9,14 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const selfsigned = require('selfsigned');
-require('dotenv').config();
+
+// Ensure .env loads even if process is started from repo root (node server/index.js)
+const envPath = path.join(__dirname, '.env');
+require('dotenv').config({ path: envPath });
+if (!process.env.PORT) {
+  console.warn(`[env] .env not loaded from ${envPath}; falling back to defaults`);
+}
+
 const { requireCsrf } = require('./middleware/csrf');
 
 const app = express();
@@ -50,7 +57,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token']
 }));
 
 app.options('*', cors());
@@ -69,7 +76,7 @@ app.use(globalLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 200,
   message: { error: 'Too many auth attempts. Please try again later.' }
 });
 
@@ -77,7 +84,6 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, https: true, env: NODE_ENV });
 });
 
-// API Health check with DB ping
 app.get('/api/health', async (_req, res) => {
   const startedAt = Date.now();
   let db = { ok: false };
@@ -85,13 +91,13 @@ app.get('/api/health', async (_req, res) => {
     const { query } = require('./src/db/db');
     const rows = await query('SELECT 1 AS up');
     db = { ok: rows?.[0]?.up === 1 };
-  } catch (e) {
+  } catch {
     db = { ok: false, error: 'DB unreachable' };
   }
   res.json({ ok: true, uptimeMs: Date.now() - startedAt, https: true, env: NODE_ENV, db });
 });
 
-app.use('/api/auth', authLimiter, require('./routes/auth'));
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/payments', require('./middleware/auth'), require('./routes/payments'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/transactions', require('./routes/transactions'));
@@ -135,7 +141,6 @@ server.listen(PORT, () => {
   console.log(`HTTPS API running on https://localhost:${PORT} (env: ${NODE_ENV})`);
 });
 
-// Optional HTTP server for local development to avoid self-signed cert warnings
 let httpServer;
 if (NODE_ENV !== 'production' && String(process.env.ENABLE_HTTP_DEV).toLowerCase() === 'true') {
   httpServer = http.createServer(app);

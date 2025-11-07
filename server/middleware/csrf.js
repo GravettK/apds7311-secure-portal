@@ -6,10 +6,11 @@ function generateToken() {
 
 function setCsrfCookie(res) {
   const token = generateToken();
+  const NODE_ENV = process.env.NODE_ENV || 'development';
   res.cookie('csrfToken', token, {
     httpOnly: false,
-    secure: (process.env.NODE_ENV || 'development') === 'production',
-    sameSite: 'strict',
+    secure: NODE_ENV === 'production',
+    sameSite: NODE_ENV === 'production' ? 'strict' : 'lax',
     maxAge: 60 * 60 * 1000
   });
   return token;
