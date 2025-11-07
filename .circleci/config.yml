@@ -10,10 +10,10 @@ jobs:
       - image: cimg/node:18.17
       - image: cimg/mysql:8.0
         environment:
-          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_ROOT_PASSWORD: testpassword123
           MYSQL_DATABASE: apds_db
           MYSQL_USER: apds_user
-          MYSQL_PASSWORD: securepassword
+          MYSQL_PASSWORD: testpassword123
     
     steps:
       - checkout
@@ -46,7 +46,7 @@ jobs:
       - run:
           name: Setup Database
           command: |
-            mysql -h 127.0.0.1 -u root -prootpassword apds_db < server/db/schema.sql
+            mysql -h 127.0.0.1 -u root -ptestpassword123 apds_db < server/db/schema.sql
       
       # Run tests with coverage
       - run:
