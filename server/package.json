@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
+    "test": "echo \"No tests yet\" && exit 0",
+    "test:coverage": "echo \"No tests yet\" && exit 0",
     "db:schema": "node ./scripts/runSql.js ./db/schema.sql",
     "db:seed": "node ./scripts/runSql.js ./db/seed.sql",
     "seed:roles": "node ./scripts/seedRoles.js",

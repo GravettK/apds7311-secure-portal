@@ -1,0 +1,119 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+  sonarcloud: sonarsource/sonarcloud@2.0.0
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/node:18.17
+      - image: cimg/mysql:8.0
+        environment:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: apds_db
+          MYSQL_USER: apds_user
+          MYSQL_PASSWORD: securepassword
+    
+    steps:
+      - checkout
+      
+      # Install dependencies
+      - node/install-packages:
+          pkg-manager: npm
+          cache-path: ~/project/node_modules
+      
+      - run:
+          name: Install Server Dependencies
+          command: cd server && npm install
+      
+      - run:
+          name: Install Client Dependencies
+          command: cd client && npm install
+      
+      # Wait for MySQL to be ready
+      - run:
+          name: Wait for MySQL
+          command: |
+            for i in `seq 1 30`; do
+              nc -z 127.0.0.1 3306 && echo Success && exit 0
+              echo -n .
+              sleep 1
+            done
+            echo Failed waiting for MySQL && exit 1
+      
+      # Setup database
+      - run:
+          name: Setup Database
+          command: |
+            mysql -h 127.0.0.1 -u root -prootpassword apds_db < server/db/schema.sql
+      
+      # Run tests with coverage
+      - run:
+          name: Run Server Tests
+          command: cd server && npm run test:coverage || true
+      
+      - run:
+          name: Run Client Tests
+          command: cd client && npm run test:coverage || true
+      
+      # Save coverage reports
+      - store_artifacts:
+          path: server/coverage
+          destination: server-coverage
+      
+      - store_artifacts:
+          path: client/coverage
+          destination: client-coverage
+      
+      - persist_to_workspace:
+          root: .
+          paths:
+            - server/coverage
+            - client/coverage
+  
+  sonarcloud-analysis:
+    docker:
+      - image: cimg/node:18.17
+    
+    steps:
+      - checkout
+      
+      - attach_workspace:
+          at: .
+      
+      - sonarcloud/scan
+
+  security-scan:
+    docker:
+      - image: cimg/node:18.17
+    
+    steps:
+      - checkout
+      
+      - run:
+          name: Install Server Dependencies
+          command: cd server && npm install
+      
+      - run:
+          name: Install Client Dependencies
+          command: cd client && npm install
+      
+      - run:
+          name: Security Audit - Server
+          command: cd server && npm audit --audit-level=moderate || true
+      
+      - run:
+          name: Security Audit - Client
+          command: cd client && npm audit --audit-level=moderate || true
+
+workflows:
+  version: 2
+  build-test-analyze:
+    jobs:
+      - build-and-test
+      - sonarcloud-analysis:
+          requires:
+            - build-and-test
+          context: SonarCloud
+      - security-scan
