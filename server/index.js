@@ -94,6 +94,7 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/payments', require('./middleware/auth'), require('./routes/payments'));
 app.use('/api/staff', require('./routes/staff'));
+app.use('/api/transactions', require('./routes/transactions'));
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
