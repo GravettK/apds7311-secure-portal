@@ -1,5 +1,2 @@
-
-> server@1.0.0 start
-> node index.js
-
+nohup: ignoring input
 HTTPS API running on https://localhost:8443 (env: development)
