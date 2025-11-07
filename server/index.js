@@ -118,3 +118,5 @@ server.listen(PORT, () => {
 
 process.on('SIGINT', () => { server.close(() => process.exit(0)); });
 process.on('SIGTERM', () => { server.close(() => process.exit(0)); });
+
+app.use('/api/transactions', require('./routes/transactions'));
